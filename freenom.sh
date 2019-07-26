@@ -41,7 +41,7 @@ if echo -- "$@" | grep -qi '[^a-z]\-c'; then
 fi
 # if scriptConf is empty, check for freenom.conf in same dir as script
 if [ -z "$scriptConf" ]; then
-  scriptConf="$(dirname "$0")/$(basename -s '.sh' "$0").conf"
+  scriptConf="$(dirname "$0")/$(basename "$0" '.sh').conf"
   # use BASH_SOURCE instead when called from 'bash -x $scriptName'
   if [ "$(dirname "$0")" = "." ]; then
     scriptConf="${BASH_SOURCE[0]/%sh/conf}"
@@ -65,12 +65,12 @@ if [ -z "$freenom_passwd" ]; then echo "Error: setting \"freenom_passwd\" is mis
 # if out_path is not set or invalid, set default
 out_path="${freenom_out_dir}/${freenom_out_mask}"
 if [[ -z "$freenom_out_dir" || -z "$freenom_out_mask" || ! -d "$freenom_out_dir" ]]; then
-  out_path="/var/log/$(basename -s '.sh' "$0")"
+  out_path="/var/log/$(basename "$0" '.sh')"
   echo "Warning: no valid \"freenom_out_dir\" or \"mask\" setting found, using default path: $out_path"
 fi
 if [ ! -w "${out_path}.log" ]; then
-  echo "Error: Logfile \"${out_path}.log\" not writable, using \"/tmp/$(basename -s '.sh' "$0").log\" instead"
-  out_path="/tmp/$(basename -s '.sh' "$0")"
+  echo "Error: Logfile \"${out_path}.log\" not writable, using \"/tmp/$(basename "$0" '.sh').log\" instead"
+  out_path="/tmp/$(basename "$0" '.sh')"
 fi
 
 # generate "random" useragent string, used for curl and below in func_randIp
@@ -203,7 +203,7 @@ func_randIp() {
   [ "$debug" -ge 2 ] && set -x
   #echo "$( ${ipCmdTrim[$((RANDOM%${#ipCmdTrim[@]}))]/\%agent\%/$agent} 2>/dev/null )" | \
   ${ipCmdTrim[$((RANDOM%${#ipCmdTrim[@]}))]/\%agent\%/$agent} 2>/dev/null | \
-    grep -Pow "$RE_IP"
+    grep -Eow "$RE_IP"
   [ "$debug" -ge 2 ] && set +x
 }
 
@@ -415,12 +415,13 @@ fi
 
 cookie_file="$(mktemp)"
 # DEBUG: comment line below for debugging
-loginPage="$(curl $c_args -A "$agent" --compressed -k -L -c "$cookie_file" \
+loginPage="$(curl $c_args -A "$agent" -k -L -c "$cookie_file" \
     "https://my.freenom.com/clientarea.php" 2>&1)"
 # old: token=$(echo "$loginPage" | grep token | grep -o value=".*" | sed 's/value=//g' | sed 's/"//g' | awk '{print $1}')
-token="$(echo "$loginPage" | grep token | head -1 | grep -o value=".*" | sed 's/value=//g' | sed 's/"//g' | awk '{print $1}')"
+token="$(echo "$loginPage" | grep token)"
+token="$(echo $token | head -1 | grep -o value=".*" | sed 's/value=//g' | sed 's/"//g' | awk '{print $1}')"
 # DEBUG: comment line below for debugging
-loginResult="$(curl $c_args -A "$agent" -e 'https://my.freenom.com/clientarea.php' -compressed -k -L -c "$cookie_file" \
+loginResult="$(curl $c_args -A "$agent" -e 'https://my.freenom.com/clientarea.php' -k -L -c "$cookie_file" \
     -F "username=$freenom_email" -F "password=$freenom_passwd" -F "token=$token" \
     "https://my.freenom.com/dologin.php")"
 if [ "$(echo -e "$loginResult" | grep "Location: /clientarea.php?incorrect=true")" != "" ]; then
@@ -440,7 +441,7 @@ if [ "$freenom_domain_id" == "" ]; then
   myDomainsURL="https://my.freenom.com/clientarea.php?action=domains&itemlimit=all&token=$token"
   # DEBUG: for debugging use local file instead:
   # DEBUG: myDomainsURL="file:///home/user/src/freenom/myDomainsPage"
-  myDomainsPage="$(curl $c_args -A "$agent" --compressed -k -L -b "$cookie_file" "$myDomainsURL")"
+  myDomainsPage="$(curl $c_args -A "$agent" -k -L -b "$cookie_file" "$myDomainsURL")"
   if [ "$myDomainsPage" ]; then
     # old: myDomainsResult="$( echo -e "$myDomainsPage" | sed -n '/href.*external-link/,/action=domaindetails/p' | sed -ne 's/.*id=\([0-9]\+\).*/\1/p;g' )"
     myDomainsResult="$( echo -e "$myDomainsPage" | sed -ne 's/.*"\(clientarea.php?action=domaindetails&id=[0-9]\+\)".*/\1/p;g' )"
@@ -451,8 +452,8 @@ if [ "$freenom_domain_id" == "" ]; then
     u=0; i=0
     for u in $myDomainsResult; do
       # DEBUG: for debugging use local file instead:
-      # DEBUG: domainDetails=$( curl $c_args -A "$agent" --compressed -k -L -b "$cookie_file" "file:///home/user/src/freenom/domainDetails_$i.bak" )
-      domainDetails="$( curl $c_args -A "$agent" --compressed -k -L -b "$cookie_file" "https://my.freenom.com/$u" )"
+      # DEBUG: domainDetails=$( curl $c_args -A "$agent" -k -L -b "$cookie_file" "file:///home/user/src/freenom/domainDetails_$i.bak" )
+      domainDetails="$( curl $c_args -A "$agent" -k -L -b "$cookie_file" "https://my.freenom.com/$u" )"
       domainId[$i]="$( echo "$u" | sed -ne 's/.*id=\([0-9]\+\).*/\1/p;g' )"
       domainName[$i]="$( echo -e "$domainDetails" | sed -n 's/.*Domain:\(.*\)<[a-z].*/\1/p' | sed -e 's/<[^>]\+>//g' -e 's/  *//g' )"
       if [ "$debug" -ge 1 ]; then echo "DEBUG: myDomains domainId=${domainId[$i]} domainName=${domainName[$i]}" ; fi
@@ -479,7 +480,7 @@ else
   domainId[0]="${freenom_domain_id}"
   domainName[0]="${freenom_domain_name}"
   if [[ "$freenom_renew_all" -eq 0 && "$freenom_renew_domain" -eq 1 ]]; then
-    domainDetails="$( curl $c_args -A "$agent" --compressed -k -L -b "$cookie_file" "https://my.freenom.com/clientarea.php?action=domaindetails&id=${freenom_domain_id}" )"
+    domainDetails="$( curl $c_args -A "$agent" -k -L -b "$cookie_file" "https://my.freenom.com/clientarea.php?action=domaindetails&id=${freenom_domain_id}" )"
     domainExpiryDate[0]="$( echo -e "$domainDetails" | sed -n 's/.*Expiry date:\(.*\)<.*/\1/p' | sed 's/<[^>]\+>//g' )"
   fi
 fi
@@ -522,7 +523,7 @@ fi
 # get dnsManagementPage on update_ip or list_records
 if [[ "$freenom_update_ip" -eq 1 || "$freenom_list_records" -eq 1 ]]; then
   dnsManagementURL="https://my.freenom.com/clientarea.php?managedns=$freenom_domain_name&domainid=$freenom_domain_id"
-  dnsManagementPage="$(curl $c_args -A "$agent" --compressed -k -L -b "$cookie_file" "$dnsManagementURL")"
+  dnsManagementPage="$(curl $c_args -A "$agent" -k -L -b "$cookie_file" "$dnsManagementURL")"
 fi
 
 # Function getRec: get domain records from dnsManagementPage
@@ -641,7 +642,7 @@ if [ "$freenom_update_ip" -eq 1 ]; then
     echo "DEBUG: update_ip freenom_update_type=$freenom_update_type name=$freenom_subdomain_name ttyl=$freenom_update_ttl value=$current_ip"
   fi
   # add/update dns record, if subdom is empty then 'name' is also, which equals apex domain
-  updateResult=$(curl $c_args -A "$agent" -e 'https://my.freenom.com/clientarea.php' --compressed -k -L -b "$cookie_file" \
+  updateResult=$(curl $c_args -A "$agent" -e 'https://my.freenom.com/clientarea.php' -k -L -b "$cookie_file" \
       -F "dnsaction=$dnsAction" \
       -F "${recordKey}[line]=" \
       -F "${recordKey}[type]=${freenom_update_type}" \
@@ -659,7 +660,7 @@ fi
 if [ "$freenom_list" -eq 1 ]; then
   if [ "$freenom_list_renewals" -eq 1 ]; then
     domainRenewalsURL="https://my.freenom.com/domains.php?a=renewals&itemlimit=all&token=$token"
-    domainRenewalsPage="$(curl $c_args -A "$agent" --compressed -k -L -b "$cookie_file" "$domainRenewalsURL")"
+    domainRenewalsPage="$(curl $c_args -A "$agent" -k -L -b "$cookie_file" "$domainRenewalsURL")"
     if [ "$domainRenewalsPage" ]; then
       domainRenewalsResult="$( echo -e "$domainRenewalsPage" | \
          sed -n '/<table/,/<\/table>/{//d;p;}' | \
@@ -764,7 +765,7 @@ func_renewDomain() {
     freenom_domain_name="${domainName[$1]} $freenom_domain_name"
     if [ "$debug" -ge 1 ]; then echo "DEBUG: func_renewDomain freenom_domain_name=$freenom_domain_name - curdate>expirydate = possible to renew"; fi
     renewDomainURL="https://my.freenom.com/domains.php?a=renewdomain&domain=${domainId[$1]}&token=$token"
-    renewDomainPage="$(curl $c_args -A "$agent" --compressed -k -L -b "$cookie_file" "$renewDomainURL")"
+    renewDomainPage="$(curl $c_args -A "$agent" -k -L -b "$cookie_file" "$renewDomainURL")"
 
     # NOTE: EXAMPLE
     # url:       https://my.freenom.com/domains.php?submitrenewals=true
@@ -777,7 +778,7 @@ func_renewDomain() {
       # if [ "$renewalPeriod" == "" ]; then renewalPeriod="12M"; fi
       if [ "$renewalPeriod" ]; then
         renewalURL="https://my.freenom.com/domains.php?submitrenewals=true"
-        renewalResult="$(curl $c_args -A "$agent" --compressed -k -L -b "$cookie_file" \
+        renewalResult="$(curl $c_args -A "$agent" -k -L -b "$cookie_file" \
         -F "token=$token" \
         -F "renewalid=${domainId[$1]}" \
         -F "renewalperiod[${domainId[$1]}]=$renewalPeriod" \
@@ -843,7 +844,7 @@ fi
 
 # logout
 # DEBUG: comment line below for debugging
-curl $c_args -A "$agent" --compressed -k -b "$cookie_file" "https://my.freenom.com/logout.php" > /dev/null 2>&1
+curl $c_args -A "$agent" -k -b "$cookie_file" "https://my.freenom.com/logout.php" > /dev/null 2>&1
 rm -f "$cookie_file"
 
 ###########
